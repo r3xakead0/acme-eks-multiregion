@@ -33,7 +33,10 @@ resource "aws_vpc_peering_connection" "cr" {
   vpc_id      = module.vpc_pri.vpc_id
   peer_vpc_id = module.vpc_sec.vpc_id
   peer_region = var.region_secondary
-  auto_accept = true
+  auto_accept = false
+  tags = {
+    Name = "${local.name_pri}-to-${local.name_sec}"
+  }
 }
 
 /* EKS – Primary */
@@ -63,53 +66,53 @@ module "eks_sec" {
 
 /* GLOBAL ACCELERATOR – attaches later to NLBs created by Services.
    We look up NLBs by fixed names set in k8s Service annotations. */
-resource "aws_globalaccelerator_accelerator" "this" {
-  name            = "${var.project}-${var.env}-ga"
-  enabled         = true
-  ip_address_type = "IPV4"
-}
+# resource "aws_globalaccelerator_accelerator" "this" {
+#   name            = "${var.project}-${var.env}-ga"
+#   enabled         = true
+#   ip_address_type = "IPV4"
+# }
 
-resource "aws_globalaccelerator_listener" "http" {
-  accelerator_arn = aws_globalaccelerator_accelerator.this.id
-  protocol        = "TCP"
+# resource "aws_globalaccelerator_listener" "http" {
+#   accelerator_arn = aws_globalaccelerator_accelerator.this.id
+#   protocol        = "TCP"
 
-  port_range {
-    from_port = 80
-    to_port   = 80
-  }
-}
+#   port_range {
+#     from_port = 80
+#     to_port   = 80
+#   }
+# }
 
 # Lookup NLBs by name in each region (they will exist after app deploy)
-data "aws_lb" "nlb_pri" {
-  name = local.nlb_name_primary
-  # default provider (primary region)
-}
+# data "aws_lb" "nlb_pri" {
+#   name = local.nlb_name_primary
+#   # default provider (primary region)
+# }
 
-data "aws_lb" "nlb_sec" {
-  provider = aws.secondary
-  name     = local.nlb_name_secondary
-}
+# data "aws_lb" "nlb_sec" {
+#   provider = aws.secondary
+#   name     = local.nlb_name_secondary
+# }
 
-resource "aws_globalaccelerator_endpoint_group" "pri" {
-  listener_arn          = aws_globalaccelerator_listener.http.id
-  endpoint_group_region = var.region_primary
-  health_check_protocol = "TCP"
-  health_check_port     = 80
+# resource "aws_globalaccelerator_endpoint_group" "pri" {
+#   listener_arn          = aws_globalaccelerator_listener.http.id
+#   endpoint_group_region = var.region_primary
+#   health_check_protocol = "TCP"
+#   health_check_port     = 80
 
-  endpoint_configuration {
-    endpoint_id = data.aws_lb.nlb_pri.arn
-    weight      = 100
-  }
-}
+#   endpoint_configuration {
+#     endpoint_id = data.aws_lb.nlb_pri.arn
+#     weight      = 100
+#   }
+# }
 
-resource "aws_globalaccelerator_endpoint_group" "sec" {
-  listener_arn          = aws_globalaccelerator_listener.http.id
-  endpoint_group_region = var.region_secondary
-  health_check_protocol = "TCP"
-  health_check_port     = 80
+# resource "aws_globalaccelerator_endpoint_group" "sec" {
+#   listener_arn          = aws_globalaccelerator_listener.http.id
+#   endpoint_group_region = var.region_secondary
+#   health_check_protocol = "TCP"
+#   health_check_port     = 80
 
-  endpoint_configuration {
-    endpoint_id = data.aws_lb.nlb_sec.arn
-    weight      = 100
-  }
-}
+#   endpoint_configuration {
+#     endpoint_id = data.aws_lb.nlb_sec.arn
+#     weight      = 100
+#   }
+# }

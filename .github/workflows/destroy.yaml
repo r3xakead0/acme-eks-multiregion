@@ -1,0 +1,67 @@
+name: destroy
+on:
+  workflow_dispatch:
+    inputs:
+      delete_app_manifests:
+        description: "Eliminar la app en ambos clústeres antes del destroy (recomendado)"
+        required: true
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    env:
+      PRIMARY_REGION: us-east-1
+      SECONDARY_REGION: us-west-2
+      PRIMARY_CLUSTER: acme-demo-pri
+      SECONDARY_CLUSTER: acme-demo-sec
+      TF_IN_AUTOMATION: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.PRIMARY_REGION }}
+
+      # 1) (Opcional) Limpieza de la app para eliminar NLBs antes del destroy
+      - name: Delete app (PRIMARY)
+        if: ${{ inputs.delete_app_manifests == 'true' }}
+        continue-on-error: true
+        run: |
+          aws eks update-kubeconfig --name "${{ env.PRIMARY_CLUSTER }}" --region "${{ env.PRIMARY_REGION }}"
+          kubectl delete -n acme svc/web-nlb --ignore-not-found
+          kubectl delete -n acme deploy/web --ignore-not-found
+          kubectl delete ns acme --ignore-not-found
+
+      - name: Delete app (SECONDARY)
+        if: ${{ inputs.delete_app_manifests == 'true' }}
+        continue-on-error: true
+        run: |
+          aws eks update-kubeconfig --name "${{ env.SECONDARY_CLUSTER }}" --region "${{ env.SECONDARY_REGION }}"
+          kubectl delete -n acme svc/web-nlb --ignore-not-found
+          kubectl delete -n acme deploy/web --ignore-not-found
+          kubectl delete ns acme --ignore-not-found
+
+      # 2) Terraform Destroy
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: terraform/envs/demo
+        run: terraform init -input=false
+
+      - name: Terraform Destroy
+        working-directory: terraform/envs/demo
+        run: terraform destroy -auto-approve
