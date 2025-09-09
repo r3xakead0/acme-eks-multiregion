@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: acme
+  labels:
+    app: web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: nginx
+          image: public.ecr.aws/nginx/nginx:1.25-alpine
+          ports:
+            - containerPort: 80
+          env:
+            - name: REGION
+              valueFrom:
+                configMapKeyRef:
+                  name: region
+                  key: name
+          volumeMounts:
+            - name: web-root
+              mountPath: /usr/share/nginx/html
+          lifecycle:
+            postStart:
+              exec:
+                command: ["/bin/sh","-c","echo '<h1>ACME – Región: '$(REGION)'</h1>' > /usr/share/nginx/html/index.html"]
+      volumes:
+        - name: web-root
+          emptyDir: {}

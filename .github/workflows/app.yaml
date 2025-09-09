@@ -1,0 +1,50 @@
+name: app
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'k8s/**'
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - region: "us-east-1"
+            cluster: "acme-demo-pri"
+            nlb_name: "acme-demo-nlb-pri"
+          - region: "us-west-2"
+            cluster: "acme-demo-sec"
+            nlb_name: "acme-demo-nlb-sec"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ matrix.region }}
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name ${{ matrix.cluster }} --region ${{ matrix.region }}
+
+      - name: Deploy manifests
+        run: |
+          kubectl apply -f k8s/base/namespace.yaml
+          # ConfigMap de región
+          sed "s/name: .*/name: ${{ matrix.region }}/" k8s/base/region-configmap.yaml | kubectl apply -f -
+          kubectl apply -f k8s/base/deployment.yaml
+          # Fijar nombre del NLB por región para que TF pueda encontrarlo
+          sed "s/acme-demo-nlb-pri/${{ matrix.nlb_name }}/" k8s/base/service-nlb.yaml | kubectl apply -f -
+
+      - name: Esperar Service EXTERNAL-IP
+        run: |
+          for i in $(seq 1 20); do
+            kubectl -n acme get svc web-nlb -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' && echo && exit 0 || true
+            sleep 10
+          done
+          echo "Timeout esperando el NLB"; exit 1

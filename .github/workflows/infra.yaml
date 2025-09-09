@@ -1,0 +1,40 @@
+name: infra
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'terraform/**'
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
+
+      - name: Terraform Init
+        working-directory: terraform/envs/demo
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform/envs/demo
+        run: terraform plan -out tfplan
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main'
+        working-directory: terraform/envs/demo
+        run: terraform apply -auto-approve tfplan

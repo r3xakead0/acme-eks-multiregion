@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: region
+  namespace: acme
+data:
+  name: us-east-1
